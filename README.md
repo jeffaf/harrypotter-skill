@@ -12,9 +12,11 @@ chmod +x harrypotter scripts/harrypotter
 
 ## Requirements
 
+
 - bash
 - curl
 - jq
+
 
 ## Usage
 
