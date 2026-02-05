@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# harrypotter - HP-API CLI for Harry Potter universe lookups
+# Usage: harrypotter <command> [args]
+
+set -euo pipefail
+
+API="https://hp-api.onrender.com/api"
+
+usage() {
+    cat <<EOF
+Usage: harrypotter <command> [args]
+
+Commands:
+  characters [limit]     All characters (default: 20)
+  students [limit]       Hogwarts students only
+  staff [limit]          Hogwarts staff only
+  house <name>           Characters by house (gryffindor/slytherin/hufflepuff/ravenclaw)
+  spells [limit]         List of spells
+  search <query>         Search characters by name
+
+Examples:
+  harrypotter characters 10
+  harrypotter students
+  harrypotter house gryffindor
+  harrypotter spells 15
+  harrypotter search "hermione"
+EOF
+    exit 1
+}
+
+fetch() {
+    curl -sf "$1" || { echo "API error" >&2; exit 1; }
+}
+
+format_character() {
+    jq -r --arg limit "${1:-20}" '
+        def capitalize: if . == "" then "" else (.[0:1] | ascii_upcase) + .[1:] end;
+        .[:($limit | tonumber)] | .[] |
+        "🧙 \(.name)" +
+        (if .house and .house != "" then " — \(.house)" else "" end) +
+        (if .ancestry and .ancestry != "" then ", \(.ancestry | gsub("-"; " ") | capitalize)" else "" end) +
+        (if .patronus and .patronus != "" then ", Patronus: \(.patronus | capitalize)" else "" end)
+    '
+}
+
+format_character_search() {
+    jq -r --arg query "${1:-}" '
+        [.[] | select(.name | ascii_downcase | contains($query | ascii_downcase))] |
+        if length == 0 then "No characters found matching: \($query)"
+        else .[] |
+            "🧙 \(.name)" +
+            (if .house and .house != "" then " — \(.house)" else "" end) +
+            (if .ancestry and .ancestry != "" then ", \(.ancestry | gsub("-"; " "))" else "" end) +
+            (if .patronus and .patronus != "" then ", Patronus: \(.patronus)" else "" end) +
+            (if .actor and .actor != "" then "\n   Actor: \(.actor)" else "" end) +
+            (if .wand.wood and .wand.wood != "" then "\n   Wand: \(.wand.wood), \(.wand.core // "unknown core"), \(.wand.length // "?")\"" else "" end) +
+            (if .dateOfBirth and .dateOfBirth != "" then "\n   Born: \(.dateOfBirth)" else "" end)
+        end
+    '
+}
+
+format_spell() {
+    jq -r --arg limit "${1:-20}" '
+        .[:($limit | tonumber)] | .[] |
+        "✨ \(.name)" +
+        (if .description and .description != "" then " — \(.description)" else "" end)
+    '
+}
+
+cmd_characters() {
+    local limit="${1:-20}"
+    fetch "$API/characters" | format_character "$limit"
+}
+
+cmd_students() {
+    local limit="${1:-20}"
+    fetch "$API/characters/students" | format_character "$limit"
+}
+
+cmd_staff() {
+    local limit="${1:-20}"
+    fetch "$API/characters/staff" | format_character "$limit"
+}
+
+cmd_house() {
+    [[ -z "${1:-}" ]] && { echo "Usage: harrypotter house <name>" >&2; echo "Houses: gryffindor, slytherin, hufflepuff, ravenclaw" >&2; exit 1; }
+    local house=$(echo "$1" | tr '[:upper:]' '[:lower:]')
+    local limit="${2:-20}"
+    fetch "$API/characters/house/$house" | format_character "$limit"
+}
+
+cmd_spells() {
+    local limit="${1:-20}"
+    fetch "$API/spells" | format_spell "$limit"
+}
+
+cmd_search() {
+    [[ -z "${1:-}" ]] && { echo "Usage: harrypotter search <query>" >&2; exit 1; }
+    fetch "$API/characters" | format_character_search "$1"
+}
+
+[[ $# -lt 1 ]] && usage
+
+case "$1" in
+    characters) shift; cmd_characters "$@" ;;
+    students)   shift; cmd_students "$@" ;;
+    staff)      shift; cmd_staff "$@" ;;
+    house)      shift; cmd_house "$@" ;;
+    spells)     shift; cmd_spells "$@" ;;
+    search)     shift; cmd_search "$@" ;;
+    -h|--help|help) usage ;;
+    *) echo "Unknown command: $1" >&2; usage ;;
+esac
