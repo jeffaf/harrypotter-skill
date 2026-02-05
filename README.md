@@ -17,6 +17,8 @@ chmod +x harrypotter scripts/harrypotter
 - curl
 - jq
 
+> **Windows users:** Requires WSL, Git Bash, or Cygwin.
+
 
 ## Usage
 
